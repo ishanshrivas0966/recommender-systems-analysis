@@ -6,6 +6,80 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import train_test_split
 
+
+# ==============================================================================
+# EVALUATION METRICS SUITE (Predictive + Top-K Ranking + Beyond-Accuracy)
+# ==============================================================================
+def evaluate_recommender_metrics(test_df, preds, k=5, relevance_threshold=8.0):
+    """
+    Computes 8 comprehensive evaluation metrics for recommender systems:
+      1. RMSE (Root Mean Squared Error)
+      2. MAE (Mean Absolute Error)
+      3. HitRate@1Star (% predictions within +/- 1.0 of true rating)
+      4. Precision@K (Fraction of top-K recommended items that are relevant)
+      5. Recall@K (Fraction of relevant items captured in top-K)
+      6. F1-Score@K (Harmonic mean of Precision@K and Recall@K)
+      7. NDCG@K (Normalized Discounted Cumulative Gain for ranking quality)
+      8. Catalog Coverage (% of unique test catalog surfaced in top-K lists)
+    """
+    df_eval = test_df.copy()
+    df_eval['pred'] = preds
+    y_true = df_eval['Book-Rating'].values
+    y_pred = df_eval['pred'].values
+
+    # 1. Rating Prediction Error Metrics
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    mae = mean_absolute_error(y_true, y_pred)
+    within_1_star = np.mean(np.abs(y_true - y_pred) <= 1.0) * 100.0
+
+    # 2. Top-K Ranking & Retrieval Metrics per User
+    precisions, recalls, ndcgs = [], [], []
+    recommended_items = set()
+
+    for u, group in df_eval.groupby('User-ID'):
+        if len(group) < 3:
+            continue
+        ranked = group.sort_values('pred', ascending=False)
+        top_k = ranked.head(k)
+        recommended_items.update(top_k['ISBN'].tolist())
+
+        n_rel_total = np.sum(group['Book-Rating'].values >= relevance_threshold)
+        if n_rel_total == 0:
+            continue
+
+        n_rel_top_k = np.sum(top_k['Book-Rating'].values >= relevance_threshold)
+        precisions.append(n_rel_top_k / min(k, len(top_k)))
+        recalls.append(n_rel_top_k / n_rel_total)
+
+        # NDCG@K calculation
+        gains = (2.0 ** top_k['Book-Rating'].values - 1.0)
+        discounts = np.log2(np.arange(2, len(top_k) + 2))
+        dcg = np.sum(gains / discounts)
+
+        ideal_ranked = group.sort_values('Book-Rating', ascending=False).head(k)
+        ideal_gains = (2.0 ** ideal_ranked['Book-Rating'].values - 1.0)
+        idcg = np.sum(ideal_gains / discounts)
+        if idcg > 0:
+            ndcgs.append(dcg / idcg)
+
+    p_at_k = np.mean(precisions) * 100.0
+    r_at_k = np.mean(recalls) * 100.0
+    f1_at_k = (2 * p_at_k * r_at_k / (p_at_k + r_at_k)) if (p_at_k + r_at_k) > 0 else 0.0
+    ndcg_at_k = np.mean(ndcgs) * 100.0
+    coverage = (len(recommended_items) / df_eval['ISBN'].nunique()) * 100.0
+
+    return {
+        'RMSE': round(rmse, 4),
+        'MAE': round(mae, 4),
+        'HitRate_1Star_%': round(within_1_star, 2),
+        'Precision@5_%': round(p_at_k, 2),
+        'Recall@5_%': round(r_at_k, 2),
+        'F1@5_%': round(f1_at_k, 2),
+        'NDCG@5_%': round(ndcg_at_k, 2),
+        'Catalog_Coverage_%': round(coverage, 2)
+    }
+
+
 def main():
     print("Loading Book-Crossing dataset...")
     books = pd.read_csv('Books.csv', low_memory=False)
@@ -150,15 +224,16 @@ def main():
         'Item-to-Item CF (Adjusted Cosine)': i2i_preds,
     }
 
-    y_true = test_df['Book-Rating'].values
-    results = []
+    eval_rows = []
     for name, preds in models.items():
-        rmse = np.sqrt(mean_squared_error(y_true, preds))
-        mae = mean_absolute_error(y_true, preds)
-        acc_1 = np.mean(np.abs(y_true - np.array(preds)) <= 1.0) * 100
-        results.append({'Paradigm': name, 'RMSE': round(rmse, 4), 'MAE': round(mae, 4), 'Within_1_Star_%': round(acc_1, 2)})
+        metrics = evaluate_recommender_metrics(test_df, preds, k=5, relevance_threshold=8.0)
+        metrics['Paradigm'] = name
+        eval_rows.append(metrics)
 
-    print(pd.DataFrame(results).to_string(index=False))
+    cols = ['Paradigm', 'RMSE', 'MAE', 'HitRate_1Star_%', 'Precision@5_%', 'Recall@5_%', 'F1@5_%', 'NDCG@5_%', 'Catalog_Coverage_%']
+    eval_df = pd.DataFrame(eval_rows)[cols].sort_values('RMSE')
+    print("\n=== COMPREHENSIVE EVALUATION METRICS BENCHMARK ===")
+    print(eval_df.to_string(index=False))
 
 if __name__ == '__main__':
     main()

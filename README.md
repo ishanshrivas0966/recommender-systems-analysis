@@ -4,7 +4,7 @@
 
 An end-to-end technical analysis and empirical implementation of modern recommendation systems:
 1. **System Architecture Case Study (`/docs`):** Deep-dive analysis into **Amazon** (Item-to-Item Collaborative Filtering, Intent Graphs, Hazard Timing Models) and **Instagram** (Two-Tower Neural Retrieval, Multi-Task Deep Ranking Funnel, Value Functions).
-2. **Empirical Paradigm Benchmark (`/src` & `/notebooks`):** Implementation and evaluation of **6 distinct recommender paradigms** on the Book-Crossing dataset (1.14M+ interactions, 271K+ books).
+2. **Empirical Paradigm Benchmark (`/src` & `/notebooks`):** Implementation and evaluation of **6 distinct recommender paradigms** across **8 evaluation metrics** on the Book-Crossing dataset (1.14M+ interactions, 271K+ books).
 
 ---
 
@@ -19,16 +19,21 @@ An end-to-end technical analysis and empirical implementation of modern recommen
 
 ---
 
-### 2. Quantitative Model Comparison (80/20 Train-Test Split)
+### 2. Multi-Metric Evaluation Benchmark (80/20 Train-Test Split)
 
-| Recommender Paradigm | Test RMSE ↓ | Test MAE ↓ | Within ±1.0 Star (%) ↑ | Core Mechanism |
-| :--- | :---: | :---: | :---: | :--- |
-| **Hybrid Ensemble (SVD + I2I + CB)** | **1.5313** | **1.1456** | 54.46% | Weighted cascade (60% SVD + 25% I2I + 15% CB) |
-| **Matrix Factorization (Biased SVD)** | 1.5415 | 1.1712 | 52.52% | Regularized SGD with $f=25$ latent factors |
-| **Content-Based Filtering (TF-IDF)** | 1.6820 | 1.1951 | **55.66%** | 3,500-dim unigram/bigram cosine similarity |
-| **Bayesian Popularity (IMDB Formula)** | 1.6882 | 1.3180 | 44.30% | Damped vote-weighted global baseline |
-| **User-to-User CF (Centered KNN)** | 1.7170 | 1.2758 | 51.54% | Mean-centered user neighborhood ($k=20$) |
-| **Item-to-Item CF (Adjusted Cosine)** | 1.7704 | 1.2666 | 54.28% | Mean-centered item co-rating similarity ($k=20$) |
+Our evaluation module (`evaluate_recommender_metrics` in `src/run_benchmark.py`) computes three families of metrics:
+1. **Rating Prediction Error:** `RMSE`, `MAE`, and `HitRate@1Star` (% of predictions within $\pm 1.0$ star).
+2. **Top-K Ranking Quality ($K=5$, Relevance $\ge 8.0$):** `Precision@5`, `Recall@5`, `F1@5`, and `NDCG@5` (Normalized Discounted Cumulative Gain).
+3. **Beyond-Accuracy Diversity:** `Catalog Coverage (%)`.
+
+| Recommender Paradigm | RMSE ↓ | MAE ↓ | ±1 Star Hit% ↑ | Precision@5 ↑ | Recall@5 ↑ | F1@5 ↑ | NDCG@5 ↑ | Coverage% ↑ |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Hybrid Ensemble (SVD + I2I + CB)** | **1.5313** | **1.1456** | 54.46% | **71.24%** | **89.51%** | **79.34%** | **85.13%** | 91.06% |
+| **Matrix Factorization (Biased SVD)** | 1.5415 | 1.1712 | 52.52% | 70.86% | 89.16% | 78.97% | 84.98% | 90.51% |
+| **Content-Based Filtering (TF-IDF)** | 1.6820 | 1.1951 | **55.66%** | 70.91% | 89.14% | 78.99% | 84.17% | 91.51% |
+| **Bayesian Popularity (IMDB Formula)** | 1.6882 | 1.3180 | 44.30% | 71.14% | 89.25% | 79.17% | 85.09% | 90.60% |
+| **User-to-User CF (Centered KNN)** | 1.7170 | 1.2758 | 51.54% | 70.74% | 88.83% | 78.76% | 83.45% | 91.42% |
+| **Item-to-Item CF (Adjusted Cosine)** | 1.7704 | 1.2666 | 54.28% | 70.51% | 88.49% | 78.48% | 81.17% | **92.34%** |
 
 ![Paradigm Benchmark Comparison](assets/paradigm_benchmark_comparison.png)
 
